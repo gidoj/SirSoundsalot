@@ -13,6 +13,8 @@ TOKEN = os.getenv('DISCORD_TOKEN')
 client = discord.Client()
 bot = commands.Bot(command_prefix='$')
 
+players = {} # track players for each server (serverID: player)
+
 def get_url(title):
     '''Parse user given title into a watchable youtube link.
     '''
@@ -99,7 +101,7 @@ async def play(ctx, *title):
 
     source = discord.FFmpegPCMAudio(filename)
     player = voice.play(source)
-
+    
 
 
 @bot.command(name='die')
