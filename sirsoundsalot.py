@@ -11,7 +11,7 @@ load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
 
 client = discord.Client()
-bot = commands.Bot(command_prefix='-')
+bot = commands.Bot(command_prefix='$')
 
 def get_url(title):
     '''Parse user given title into a watchable youtube link.
@@ -33,7 +33,8 @@ def download_as_mp3(url, guild_id):
     '''Download url from youtube and save as mp3
     '''
     filename = str(guild_id) + '.mp3'
-    os.remove(filename)
+    if os.path.exists(filename):
+        os.remove(filename)
     ydl_opts = {
             'outtmpl': filename,
             'format': 'bestaudio/best',
