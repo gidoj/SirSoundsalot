@@ -1,0 +1,2 @@
+# SirSoundsalot
+Discord music bot
