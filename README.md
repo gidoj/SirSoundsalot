@@ -1,5 +1,5 @@
 # SirSoundsalot
-Discord bot that plays audio from youtube queryies/links.
+Discord bot that plays audio from youtube queries/links.
 
 ## Usage
 
