@@ -13,7 +13,7 @@ queue = {} # track server queues (serverID: [(video_url, video_title),])
 
 
 def speed_check(s):
-    '''Raise error if video download too slow.
+    '''Raise error if video download too slow
     '''
     speed = s.get('speed')
 
@@ -32,7 +32,7 @@ def intersect(a, b):
 
 
 def get_url(title):
-    '''Parse user given title into a watchable youtube link.
+    '''Parse user given title into a watchable youtube link
     '''
     if 'youtube.com' in title[0]:
         ## no need to parse if already youtube link
@@ -47,7 +47,7 @@ def get_url(title):
 
 
 def title_from_url(url):
-    '''Get video title from youtube url.
+    '''Get video title from youtube url
     '''
     with youtube_dl.YoutubeDL({}) as ydl:
         title = ydl.extract_info(url, download=False)['title']
@@ -56,7 +56,7 @@ def title_from_url(url):
 
 
 def download_as_mp3(url, guild_id):
-    '''Download url from youtube and save as mp3.
+    '''Download url from youtube and save as mp3
     '''
     filename = str(guild_id) + '.mp3' # one file per server
     if os.path.exists(filename):
@@ -79,7 +79,7 @@ def download_as_mp3(url, guild_id):
 
 
 def queue_song(ctx, url, title):
-    '''Push new song into queue; play immediately if queue previously empty.
+    '''Push new song into queue; play immediately if queue previously empty
     '''
     global queue
     
@@ -94,7 +94,7 @@ def queue_song(ctx, url, title):
 
 
 def play_next(ctx):
-    '''Play next song in queue.
+    '''Play next song in queue
     '''
     if not queue[ctx.guild.id]:
         # queue empty, no song to play next
@@ -115,11 +115,11 @@ def play_next(ctx):
 
 
 def end_song(ctx):
-    '''Clean up after song ends.
+    '''Clean up after song ends
     '''
     global queue
 
-    if queue[ctx.guild.id]:
+    if ctx.guild.id in queue and queue[ctx.guild.id]:
         ## remove song that just finished
         queue[ctx.guild.id] = queue[ctx.guild.id][1:]
         play_next(ctx)
@@ -133,7 +133,7 @@ async def on_ready():
 
 @bot.command(name='play')
 async def play(ctx, *title):
-    '''Play video from youtube (title or link).
+    '''Play video from youtube (title or link)
     '''
 
     ## only connect to voice if not already connected
@@ -167,28 +167,74 @@ async def play(ctx, *title):
 
 @bot.command(name='queue')
 async def list_queue(ctx):
-    '''List the queue of songs.
+    '''List the queue of songs
     '''
-    if queue[ctx.guild.id]:
-        queue_str =  '>>> ' ## format indent on discord
+    queue_str =  '>>> ' ## format indent on discord
+    if ctx.guild.id in queue and queue[ctx.guild.id]:
         pos = 1
         for _, title in queue[ctx.guild.id]:
            queue_str += f'({pos}) *{title}*\n'
            pos += 1
+    else:
+        queue_str += "*EMPTY*"
 
-        await ctx.send(queue_str)
+    await ctx.send(queue_str)
        
 
 @bot.command(name='skip')
 async def skip(ctx):
-    '''Skip the current song.
+    '''Skip the current song
     '''
+    ctx.voice_client.stop()
+
+
+@bot.command(name='rm')
+async def remove(ctx, n: int):
+    '''Remove nth song from queue
+    '''
+    global queue
+    
+    if ctx.guild.id not in queue or not queue[ctx.guild.id] or \
+            n < 1 or n > len(queue[ctx.guild.id]):
+        await ctx.send('Invalid index!')
+    elif n == 1:
+        ## removing current song = skip
+        await skip(ctx)
+    else:
+        to_remove = queue[ctx.guild.id][n-1][1]
+        queue[ctx.guild.id] = queue[ctx.guild.id][:n-1] + queue[ctx.guild.id][n:]
+        await ctx.send(f'Removed {to_remove} from queue. Updated queue:')
+        await list_queue(ctx) ## display updated queue
+    
+
+@bot.command(name='swap')
+async def swap(ctx, n: int, m: int):
+    '''Swap nth and mth songs in queue (*can't swap with first!)
+    '''
+    if ctx.guild.id not in queue or not queue[ctx.guild.id] or \
+            n < 2 or n > len(queue[ctx.guild.id]) or \
+            m < 2 or m > len(queue[ctx.guild.id]):
+        await ctx.send('Invalid index!')
+    else:
+        nth = queue[ctx.guild.id][n-1]
+        mth = queue[ctx.guild.id][m-1]
+        queue[ctx.guild.id][n-1] = mth
+        queue[ctx.guild.id][m-1] = nth
+        await list_queue(ctx)
+
+
+@bot.command(name='clear')
+async def clear_queue(ctx):
+    '''Clear the queue
+    '''
+    if ctx.guild.id in queue:
+        queue[ctx.guild.id] = None
     ctx.voice_client.stop()
 
 
 @bot.command(name='die')
 async def die(ctx):
-    '''Murder the bot.
+    '''Murder the bot
     '''
     queue[ctx.guild.id] = None
     await ctx.voice_client.disconnect()
