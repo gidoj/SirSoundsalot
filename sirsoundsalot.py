@@ -13,7 +13,16 @@ TOKEN = os.getenv('DISCORD_TOKEN')
 client = discord.Client()
 bot = commands.Bot(command_prefix='$')
 
-players = {} # track players for each server (serverID: player)
+queue = {} # track server queues (serverID: [(video_url, video_title),])
+
+def intersect(a, b):
+    '''Checks if any element in a belongs to b as well
+    '''
+    for elt in a:
+        if elt in b:
+            return True
+    return False
+
 
 def get_url(title):
     '''Parse user given title into a watchable youtube link.
@@ -29,6 +38,15 @@ def get_url(title):
         res = re.findall('\/watch\?v=(.{11})', content)
         url = f'https://www.youtube.com/watch?v={res[0]}'
     return url
+
+
+def title_from_url(url):
+    '''Get video title from youtube url
+    '''
+    with youtube_dl.YoutubeDL({'outtmpl': 'temp.mp3'}) as ydl:
+        title = ydl.extract_info(url, download=False)['title']
+
+    return title
 
 
 def download_as_mp3(url, guild_id):
@@ -48,19 +66,55 @@ def download_as_mp3(url, guild_id):
             }
     
     with youtube_dl.YoutubeDL(ydl_opts) as ydl:
-        title = ydl.extract_info(url, download=False)['title']
         ydl.download([url])
 
-    return (title, filename)
+    return filename
 
 
-def intersect(a, b):
-    '''Checks if any element in a belongs to b as well
+def queue_song(ctx, url, title):
+    '''Push new song into queue; play immediately if queue previously empty
     '''
-    for elt in a:
-        if elt in b:
-            return True
-    return False
+    global queue
+    
+    if ctx.guild.id in queue and queue[ctx.guild.id]:
+        # push song into queue
+        print(f'Queing {title}')
+        queue[ctx.guild.id].append((url, title))
+    else:
+        # redundant line, but don't know how to not be redundant or am lazy
+        queue[ctx.guild.id] = [(url, title),]
+        play_next(ctx)
+
+
+def play_next(ctx):
+    '''Play next son in queue
+    '''
+    if (not queue[ctx.guild.id]):
+        # queue empty, no song to play next
+        return
+
+    url, title = queue[ctx.guild.id][0]
+    filename = download_as_mp3(url, ctx.guild.id) 
+
+    print(f'Playing {title} ({url})')
+
+    if (ctx.voice_client):
+        source = discord.FFmpegPCMAudio(filename)
+        player = ctx.voice_client.play(source, after=lambda e: end_song(ctx))
+
+
+def end_song(ctx):
+    '''Clean up after song ends.
+    '''
+    global queue
+
+    if (ctx.voice_client):
+        ctx.voice_client.stop() 
+
+    ## remove song that just finished
+    queue[ctx.guild.id] = queue[ctx.guild.id][1:]
+    play_next(ctx)
+
 
 @bot.event
 async def on_ready():
@@ -73,7 +127,7 @@ async def on_command_error(ctx, error):
 
 @bot.command(name='play')
 async def play(ctx, *title):
-    '''Search youtube for title (unless already link) and play in user's voice channel
+    '''Play video from youtube (title or link).
     '''
     if (ctx.author.voice):
         channel = ctx.author.voice.channel
@@ -83,7 +137,7 @@ async def play(ctx, *title):
                 return
             else: 
                 channel = ctx.author.voice.channel
-                voice = await channel.connect()
+                await channel.connect()
     else:
         await ctx.send('You need to join a voice channel!')
         return
@@ -94,18 +148,37 @@ async def play(ctx, *title):
 
     ## download youtube link to play as mp3
     url = get_url(title)
-    real_title, filename = download_as_mp3(url, ctx.guild.id) 
+    real_title = title_from_url(url)
+    if (ctx.guild.id in queue and queue[ctx.guild.id]):
+        await ctx.send(f'Queuing {real_title} ({url})')
+    else:
+        await ctx.send(f'Playing {real_title} ({url})')
+    queue_song(ctx, url, real_title)
 
-    response = f'Playing {real_title} ({url})'
-    await ctx.send(response)
+@bot.command(name='queue')
+async def list_queue(ctx):
+    '''List the queue of songs
+    '''
+    if (queue[ctx.guild.id]):
+        queue_str =  '>>> '
+        pos = 1
+        for _, title in queue[ctx.guild.id]:
+           queue_str += f'({pos}) {title}\n'
+           pos += 1
 
-    source = discord.FFmpegPCMAudio(filename)
-    player = voice.play(source)
-    
+        await ctx.send(queue_str)
+            
+@bot.command(name='skip')
+async def skip(ctx):
+    '''Skip the current song.
+    '''
+    end_song(ctx)
 
 
 @bot.command(name='die')
 async def die(ctx):
+    ## clear queue, player
+    queue[ctx.guild.id] = None
     await ctx.voice_client.disconnect()
 
 bot.run(TOKEN)
