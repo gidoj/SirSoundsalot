@@ -102,18 +102,26 @@ def end_song(ctx):
     '''
     global queue
 
-    if ctx.voice_client:
-        ctx.voice_client.stop() 
-
-    ## remove song that just finished
-    queue[ctx.guild.id] = queue[ctx.guild.id][1:]
-    play_next(ctx)
+    if queue[ctx.guild.id]:
+        ## remove song that just finished
+        queue[ctx.guild.id] = queue[ctx.guild.id][1:]
+        play_next(ctx)
 
 
 @bot.event
 async def on_ready():
     ## startup 
     print(f'{bot.user.name} has connected to Discord!')
+
+
+@bot.event
+async def on_command_error(ctx, error):
+    if isinstance(error, youtube_dl.utils.DownloadError):
+        await ctx.send('Error downloading link. Clearing queue. Try again.')
+        await die(ctx)
+    else:
+        raise error
+
 
 
 @bot.command(name='play')
@@ -168,7 +176,7 @@ async def list_queue(ctx):
 async def skip(ctx):
     '''Skip the current song.
     '''
-    end_song(ctx)
+    ctx.voice_client.stop()
 
 
 @bot.command(name='die')
