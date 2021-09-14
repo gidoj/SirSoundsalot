@@ -11,6 +11,17 @@ bot = commands.Bot(command_prefix='$')
 
 queue = {} # track server queues (serverID: [(video_url, video_title),])
 
+
+def speed_check(s):
+    '''Raise error if video download too slow.
+    '''
+    speed = s.get('speed')
+
+    if speed and speed <= 77*1024 and s.get('downloaded_bytes', 0) >= 300000:
+        ## <= 77 kb/s
+        raise youtube_dl.utils.DownloadError('Abnormal downloading speed drop.')
+
+
 def intersect(a, b):
     '''Checks if any element in a belongs to b as well
     '''
@@ -61,6 +72,7 @@ def download_as_mp3(url, guild_id):
             }
     
     with youtube_dl.YoutubeDL(ydl_opts) as ydl:
+        ydl.add_progress_hook(speed_check)
         ydl.download([url])
 
     return filename
@@ -90,11 +102,16 @@ def play_next(ctx):
 
     if ctx.voice_client:
         url, title = queue[ctx.guild.id][0]
-        filename = download_as_mp3(url, ctx.guild.id) 
-    
-        print(f'Playing {title} ({url})')
-        source = discord.FFmpegPCMAudio(filename)
-        player = ctx.voice_client.play(source, after=lambda e: end_song(ctx))
+        try:
+            filename = download_as_mp3(url, ctx.guild.id) 
+
+            print(f'Playing {title} ({url})')
+            source = discord.FFmpegPCMAudio(filename)
+            player = ctx.voice_client.play(source, after=lambda e: end_song(ctx))
+        
+        except youtube_dl.utils.DownloadError:
+            print('\n----------\nDownload error, trying again.\n----------\n')
+            play_next(ctx)
 
 
 def end_song(ctx):
@@ -112,16 +129,6 @@ def end_song(ctx):
 async def on_ready():
     ## startup 
     print(f'{bot.user.name} has connected to Discord!')
-
-
-@bot.event
-async def on_command_error(ctx, error):
-    if isinstance(error, youtube_dl.utils.DownloadError):
-        await ctx.send('Error downloading link. Clearing queue. Try again.')
-        await die(ctx)
-    else:
-        raise error
-
 
 
 @bot.command(name='play')
