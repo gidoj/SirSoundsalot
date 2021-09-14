@@ -1,9 +1,5 @@
-import os
+import os, youtube_dl, discord, urllib.request, re
 from dotenv import load_dotenv # environmental varaibles
-import urllib.request, re ## opening and parsing webpages
-import youtube_dl
-
-import discord
 from discord.ext import commands
 
 # load discord token from environment variables (.env file)
@@ -27,8 +23,7 @@ def intersect(a, b):
 def get_url(title):
     '''Parse user given title into a watchable youtube link.
     '''
-    url = ''
-    if ('youtube.com' in title[0]):
+    if 'youtube.com' in title[0]:
         ## no need to parse if already youtube link
         url = title[0]
     else:
@@ -41,18 +36,18 @@ def get_url(title):
 
 
 def title_from_url(url):
-    '''Get video title from youtube url
+    '''Get video title from youtube url.
     '''
-    with youtube_dl.YoutubeDL({'outtmpl': 'temp.mp3'}) as ydl:
+    with youtube_dl.YoutubeDL({}) as ydl:
         title = ydl.extract_info(url, download=False)['title']
 
     return title
 
 
 def download_as_mp3(url, guild_id):
-    '''Download url from youtube and save as mp3
+    '''Download url from youtube and save as mp3.
     '''
-    filename = str(guild_id) + '.mp3'
+    filename = str(guild_id) + '.mp3' # one file per server
     if os.path.exists(filename):
         os.remove(filename)
     ydl_opts = {
@@ -72,33 +67,32 @@ def download_as_mp3(url, guild_id):
 
 
 def queue_song(ctx, url, title):
-    '''Push new song into queue; play immediately if queue previously empty
+    '''Push new song into queue; play immediately if queue previously empty.
     '''
     global queue
     
     if ctx.guild.id in queue and queue[ctx.guild.id]:
         # push song into queue
-        print(f'Queing {title}')
+        print(f'Queueing {title}')
         queue[ctx.guild.id].append((url, title))
     else:
-        # redundant line, but don't know how to not be redundant or am lazy
+        # play immediately if queue previously empty
         queue[ctx.guild.id] = [(url, title),]
         play_next(ctx)
 
 
 def play_next(ctx):
-    '''Play next son in queue
+    '''Play next song in queue.
     '''
-    if (not queue[ctx.guild.id]):
+    if not queue[ctx.guild.id]:
         # queue empty, no song to play next
         return
 
-    url, title = queue[ctx.guild.id][0]
-    filename = download_as_mp3(url, ctx.guild.id) 
-
-    print(f'Playing {title} ({url})')
-
-    if (ctx.voice_client):
+    if ctx.voice_client:
+        url, title = queue[ctx.guild.id][0]
+        filename = download_as_mp3(url, ctx.guild.id) 
+    
+        print(f'Playing {title} ({url})')
         source = discord.FFmpegPCMAudio(filename)
         player = ctx.voice_client.play(source, after=lambda e: end_song(ctx))
 
@@ -108,7 +102,7 @@ def end_song(ctx):
     '''
     global queue
 
-    if (ctx.voice_client):
+    if ctx.voice_client:
         ctx.voice_client.stop() 
 
     ## remove song that just finished
@@ -121,18 +115,19 @@ async def on_ready():
     ## startup 
     print(f'{bot.user.name} has connected to Discord!')
 
-@bot.event
-async def on_command_error(ctx, error):
-    raise error
 
 @bot.command(name='play')
 async def play(ctx, *title):
     '''Play video from youtube (title or link).
     '''
+
+    ## only connect to voice if not already connected
+    ## and author in a channel
     if (ctx.author.voice):
         channel = ctx.author.voice.channel
         if (channel not in [bc.channel for bc in bot.voice_clients]):
-            if (intersect([gc.name for gc in ctx.guild.channels], [bc.channel.name for bc in bot.voice_clients])):
+            if intersect([gc.name for gc in ctx.guild.channels], 
+                [bc.channel.name for bc in bot.voice_clients]):
                 await ctx.send('You\'re not in the right channel!')
                 return
             else: 
@@ -146,28 +141,29 @@ async def play(ctx, *title):
         await ctx.send('Please specify a source.')
         return
 
-    ## download youtube link to play as mp3
     url = get_url(title)
     real_title = title_from_url(url)
-    if (ctx.guild.id in queue and queue[ctx.guild.id]):
+    if ctx.guild.id in queue and queue[ctx.guild.id]:
         await ctx.send(f'Queuing {real_title} ({url})')
     else:
         await ctx.send(f'Playing {real_title} ({url})')
     queue_song(ctx, url, real_title)
 
+
 @bot.command(name='queue')
 async def list_queue(ctx):
-    '''List the queue of songs
+    '''List the queue of songs.
     '''
-    if (queue[ctx.guild.id]):
-        queue_str =  '>>> '
+    if queue[ctx.guild.id]:
+        queue_str =  '>>> ' ## format indent on discord
         pos = 1
         for _, title in queue[ctx.guild.id]:
-           queue_str += f'({pos}) {title}\n'
+           queue_str += f'({pos}) *{title}*\n'
            pos += 1
 
         await ctx.send(queue_str)
-            
+       
+
 @bot.command(name='skip')
 async def skip(ctx):
     '''Skip the current song.
@@ -177,9 +173,13 @@ async def skip(ctx):
 
 @bot.command(name='die')
 async def die(ctx):
-    ## clear queue, player
+    '''Murder the bot.
+    '''
     queue[ctx.guild.id] = None
     await ctx.voice_client.disconnect()
 
+
 bot.run(TOKEN)
+
+
 
