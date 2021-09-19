@@ -132,6 +132,7 @@ async def dc_if_idle():
         if not queue[guild_id]:
             voice_client = discord.utils.get(bot.voice_clients, guild=bot.get_guild(guild_id))
             await voice_client.disconnect()
+            print(f'Idle: disconnecting from {bot.get_guild(guild_id)}')
             to_remove.append(guild_id)
 
     for guild_id in to_remove:
