@@ -30,6 +30,36 @@ def intersect(a, b):
     return False
 
 
+def search_url(url, pattern):
+    '''Regex search on url of pattern
+    '''
+    content=urllib.request.urlopen(url).read().decode('utf-8')
+    return re.findall(pattern, content)
+
+
+def get_youtube_playlist_urls(url):
+    '''Return all urls of videos in a youtube playlist url
+    '''
+    urls = [] # hold complete video urls
+    res = search_url(url, '"videoId":"(.{11})","playlistId"')
+    for elt in res:
+        video = f'https://www.youtube.com/watch?v={elt}'
+        if video not in urls:
+            urls.append(video)
+
+    return urls
+
+
+def url_from_title(title):
+    '''Get youtube url from title search
+    '''
+    query = '+'.join(title)
+    query_url = f'https://www.youtube.com/results?search_query={query}'
+    res = search_url(query_url, '\/watch\?v=(.{11})')
+    url = f'https://www.youtube.com/watch?v={res[0]}'
+    return url
+
+
 def get_url(title):
     '''Parse user given title into a watchable youtube link
     '''
@@ -37,11 +67,7 @@ def get_url(title):
         ## no need to parse if already youtube link
         url = title[0]
     else:
-        query = '+'.join(title)
-        query_url = f'https://www.youtube.com/results?search_query={query}'
-        content = urllib.request.urlopen(query_url).read().decode('utf-8')
-        res = re.findall('\/watch\?v=(.{11})', content)
-        url = f'https://www.youtube.com/watch?v={res[0]}'
+        url = url_from_title(title)
     return url
 
 
@@ -172,6 +198,12 @@ async def play(ctx, *title):
         return
 
     url = get_url(title)
+    if 'youtube' in url and '&list=' in url:
+        print('Queueing youtube playlist. . .')
+        for video in get_youtube_playlist_urls(url):
+            await play(ctx, video)
+        print('All playlist songs queued.')
+        return
     real_title = title_from_url(url)
     if ctx.guild.id in queue and queue[ctx.guild.id]:
         await ctx.send(f'Queuing {real_title} ({url})')
@@ -251,7 +283,8 @@ async def clear_queue(ctx):
 async def die(ctx):
     '''Murder the bot
     '''
-    del(queue[ctx.guild.id])
+    if ctx.guild.id in queue:
+        del(queue[ctx.guild.id])
     await ctx.voice_client.disconnect()
 
 
