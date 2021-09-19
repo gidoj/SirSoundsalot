@@ -1,16 +1,15 @@
 import os, youtube_dl, discord, urllib.request, re
 from dotenv import load_dotenv # environmental varaibles
-from discord.ext import commands
+from discord.ext import commands, tasks
 
 # load discord token from environment variables (.env file)
 load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
 
 client = discord.Client()
-bot = commands.Bot(command_prefix='$')
+bot = commands.Bot(command_prefix='$', activity=discord.Activity(type=discord.ActivityType.listening, name="the waves crash against me ship"))
 
 queue = {} # track server queues (serverID: [(video_url, video_title),])
-
 
 def speed_check(s):
     '''Raise error if video download too slow
@@ -124,11 +123,26 @@ def end_song(ctx):
         queue[ctx.guild.id] = queue[ctx.guild.id][1:]
         play_next(ctx)
 
+@tasks.loop(seconds=300)
+async def dc_if_idle():
+    '''Check if bot is idle (queue empty) and dc
+    '''
+    to_remove = []
+    for guild_id in queue:
+        if not queue[guild_id]:
+            voice_client = discord.utils.get(bot.voice_clients, guild=bot.get_guild(guild_id))
+            await voice_client.disconnect()
+            to_remove.append(guild_id)
+
+    for guild_id in to_remove:
+        del(queue[guild_id])
+
 
 @bot.event
 async def on_ready():
     ## startup 
     print(f'{bot.user.name} has connected to Discord!')
+    dc_if_idle.start()
 
 
 @bot.command(name='play')
@@ -236,7 +250,7 @@ async def clear_queue(ctx):
 async def die(ctx):
     '''Murder the bot
     '''
-    queue[ctx.guild.id] = None
+    del(queue[ctx.guild.id])
     await ctx.voice_client.disconnect()
 
 
